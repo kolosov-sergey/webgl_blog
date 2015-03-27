@@ -1,0 +1,251 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+<title>Экспорт объектов из Blender</title>
+<meta content="charset=utf-8">
+
+<script type="text/javascript" src="gl-matrix-min.js"></script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    void main(void) {
+        gl_FragColor = vec4(1, 1, 1, 1.0);
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    void main(void) {
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    }
+</script>
+
+
+<script type="text/javascript">
+    window.requestAnimFrame = (function() {
+	  return window.requestAnimationFrame ||
+			 window.webkitRequestAnimationFrame ||
+			 window.mozRequestAnimationFrame ||
+			 window.oRequestAnimationFrame ||
+			 window.msRequestAnimationFrame ||
+			 function(callback, element) {
+			   window.setTimeout(callback, 1000/60);
+			 };
+	})();
+    
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+
+    var shaderProgram;
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+    }
+
+
+    var mvMatrix = mat4.create();
+    var pMatrix = mat4.create();
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+    var vertices;
+    var indices;
+    var vertexBuffer;
+    var indexBuffer;
+
+    function initBuffers() {
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        
+        vertexBuffer.itemSize = 3;
+        vertexBuffer.numItems = vertices.length / 3;
+        
+        indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        
+        indexBuffer.itemSize = 1;
+        indexBuffer.numItems = indices.length;
+    }
+    
+    var rX = 0;
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(pMatrix, 45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+		mat4.identity(mvMatrix);
+		
+        mat4.translate(mvMatrix, mvMatrix, [0.0, 0, -3.0]);
+		mat4.rotateX(mvMatrix, mvMatrix, degToRad(rX));
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        setMatrixUniforms();
+        
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.drawElements(gl.LINE_STRIP, indexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    }
+
+    var lastTime = 0;
+	
+	function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+            rX += (20 * elapsed) / 1000.0;
+        }
+        lastTime = timeNow;
+    }
+	
+	function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        animate();
+    }
+    
+    function webGLStart() {
+        var canvas = document.getElementById("canvas");
+        initGL(canvas);
+        initShaders();
+
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        
+        loadJsonModel();
+    }
+    
+    function parseCollada(colladaXml) {
+        var xmlDoc;
+        
+        // создаем парсер DOM
+        if (window.DOMParser) {
+            var parser = new DOMParser();
+            xmlDoc = parser.parseFromString(colladaXml, "text/xml");
+        } else { // Internet Explorer
+            xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+            xmlDoc.async=false;
+            xmlDoc.loadXML(colladaXml);
+        }
+        
+        var jsonResult = {};
+        // находим /COLLADA/library_geometries/geometry/mesh/source/float_array
+        var mesh = xmlDoc.getElementsByTagName("mesh")[0];
+        var verticesSources = mesh.getElementsByTagName("source")[0];
+        var verticesNode = verticesSources.getElementsByTagName("float_array")[0];
+        // в этой секции хранятся координаты через пробел - получаем их массив
+        jsonResult.vertices = verticesNode.textContent.split(" ");
+        
+        // находим /COLLADA/library_geometries/geometry/mesh/polylist/p
+        var polyNode = mesh.getElementsByTagName("polylist")[0];
+        var indecesNode = polyNode.getElementsByTagName("p")[0];
+        var allIndices = indecesNode.textContent.split(" ");
+        jsonResult.indices = [];
+        // нужные нам индексы вершин находятся в 0, 3, 6 и т.д.
+        for (var i = 0; i < allIndices.length; i += 2) {
+            jsonResult.indices.push(allIndices[i]);
+        }
+        return jsonResult;
+    }
+    
+    function loadJsonModel() {
+        var request = new XMLHttpRequest();
+        request.open("GET", "torus.xml");
+        request.onreadystatechange = function() {
+            if (request.readyState == 4) {
+                var colladaJson = parseCollada(request.responseText);
+                vertices = colladaJson.vertices;
+                indices = colladaJson.indices;
+                initBuffers();
+                tick();
+            }
+        }
+        request.send();
+    }
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
+
+</html>
