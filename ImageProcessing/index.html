@@ -1,0 +1,321 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+<title>Обработка изображений</title>
+<meta content="charset=utf-8">
+
+<script type="text/javascript" src="gl-matrix-min.js"></script>
+
+<script type="text/javascript">
+    var filters = {
+        Original: {
+            weight: 1.0,
+            kernel: [
+                0, 0, 0,
+                0, 1, 0,
+                0, 0, 0
+            ]
+        },
+        GaussianBlur: {
+            weight: 16.0,
+            kernel: [
+                1, 2, 1,
+                2, 4, 2,
+                1, 2, 1
+            ]
+        },
+        Sharpen: {
+            weight: 1.0,
+            kernel: [
+                0, -1, 0,
+                -1, 5, -1,
+                0, -1, 0
+            ]
+        },
+        EdgeDetection: {
+            weight: 1.0,
+            kernel: [
+                0, 1, 0,
+                1, -4, 1,
+                0, 1, 0
+            ]
+        },
+        Emboss: {
+            weight: 1.0,
+            kernel: [
+                -2, -1, 0,
+                -1, 1, 1,
+                0, 1, 2
+            ]
+        }
+    };
+</script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec2 vTextureCoord;
+
+    uniform vec2 uTextureSize;
+    
+    uniform float uKernel[9];
+    uniform float uKernelWeight;
+
+    uniform sampler2D uSampler;
+
+    void main(void) {
+        vec2 pixelSize = vec2(1.0, 1.0) / uTextureSize;
+        vec4 colorSum =
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2(-1, -1)) * uKernel[0] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2( 0, -1)) * uKernel[1] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2( 1, -1)) * uKernel[2] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2(-1,  0)) * uKernel[3] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2( 0,  0)) * uKernel[4] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2( 1,  0)) * uKernel[5] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2(-1,  1)) * uKernel[6] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2( 0,  1)) * uKernel[7] +
+            texture2D(uSampler, vTextureCoord + pixelSize * vec2( 1,  1)) * uKernel[8];
+
+        gl_FragColor = vec4((colorSum / uKernelWeight).rgb, 1.0);
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec2 aTextureCoord;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    
+    varying vec2 vTextureCoord;
+
+    void main(void) {
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        vTextureCoord = aTextureCoord;
+    }
+</script>
+
+
+<script type="text/javascript">
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+
+    var shaderProgram;
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+        gl.enableVertexAttribArray(shaderProgram.textureCoordAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        shaderProgram.samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
+    }
+
+
+    var mvMatrix = mat4.create();
+    var pMatrix = mat4.create();
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+    var vertexBuffer;
+    var indicesBuffer;
+
+    function initBuffers() {
+
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+
+        vertices = [
+            -1, -1, 0,
+            -1, 1, 0,
+            1, 1, 0,
+            1, -1, 0
+        ];
+
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        vertexBuffer.itemSize = 3;
+        vertexBuffer.numItems = 4;
+        
+        vertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexTextureCoordBuffer);
+        var textureCoords = [
+            0.0, 0.0,
+            0.0, 1.0,
+            1.0, 1.0,
+            1.0, 0.0
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoords), gl.STATIC_DRAW);
+        vertexTextureCoordBuffer.itemSize = 2;
+        vertexTextureCoordBuffer.numItems = 4;
+        
+        indicesBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indicesBuffer);
+        var indices = [
+            0, 2, 1,
+            0, 3, 2
+        ];
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        indicesBuffer.itemSize = 1;
+        indicesBuffer.numItems = 6;
+    }
+    
+    var imageTexture;
+    function initTexture() {
+        imageTexture = gl.createTexture();
+        imageTexture.image = new Image();
+        imageTexture.image.onload = function() {
+            loadTextureCallback(imageTexture)
+        }
+
+        imageTexture.image.src = "train.png";
+    }
+    
+    function loadTextureCallback(texture) {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        
+        var textureSizeLocation = gl.getUniformLocation(shaderProgram, "uTextureSize");
+        gl.uniform2f(textureSizeLocation, texture.image.width, texture.image.height);
+        
+        drawScene();
+    }
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(pMatrix, 45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+		mat4.identity(mvMatrix);
+		
+        mat4.translate(mvMatrix, mvMatrix, [0.0, 0, -2.0]);
+
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexTextureCoordBuffer);
+        gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, vertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        var selectedFilter = document.getElementById("filterSelect").value;
+        var filterDescription = filters[selectedFilter];
+        
+        var kernelLocation = gl.getUniformLocation(shaderProgram, "uKernel[0]");
+        gl.uniform1fv(kernelLocation, filterDescription.kernel);
+        
+        var kernelWeightLocation = gl.getUniformLocation(shaderProgram, "uKernelWeight");
+        gl.uniform1f(kernelWeightLocation, filterDescription.weight);
+        
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.uniform1i(shaderProgram.samplerUniform, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indicesBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, indicesBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    }
+
+    function webGLStart() {
+        var canvas = document.getElementById("canvas");
+        initGL(canvas);
+        initShaders();
+        initBuffers();
+        initTexture();
+
+        gl.clearColor(0.2, 0.2, 0.2, 1);
+        
+        
+    }
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+
+    <br />
+
+    <select id="filterSelect" onchange="drawScene()">
+        <option value="Original" selected="selected">Исходное изображение</option>
+        <option value="GaussianBlur">Фильтр Гаусса</option>
+        <option value="Sharpen">Повышение резкости</option>
+        <option value="EdgeDetection">Выделение границ</option>
+        <option value="Emboss">Барельеф</option>
+    </select>
+
+    <br />
+    <br />
+    
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
+</html>
