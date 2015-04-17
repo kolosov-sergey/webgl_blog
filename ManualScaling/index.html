@@ -1,0 +1,264 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+<title>Масштабирование объектов</title>
+<meta content="charset=utf-8">
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    void main(void) {
+        gl_FragColor = vec4(0.3, 0.6, 0.1, 1.0);
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+
+    uniform vec2 uTranslation;
+    uniform vec2 uScale;
+
+    void main(void) {
+        vec3 scaled = vec3(aVertexPosition.xy * uScale, aVertexPosition.z);
+        gl_Position = vec4(scaled, 1.0) + vec4(uTranslation, 0.0, 0.0);
+    }
+</script>
+
+
+<script type="text/javascript">
+    window.requestAnimFrame = (function() {
+	  return window.requestAnimationFrame ||
+			 window.webkitRequestAnimationFrame ||
+			 window.mozRequestAnimationFrame ||
+			 window.oRequestAnimationFrame ||
+			 window.msRequestAnimationFrame ||
+			 function(callback, element) {
+			   window.setTimeout(callback, 1000/60);
+			 };
+	})();
+    
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+    var shaderProgram;
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.translationUniform = gl.getUniformLocation(shaderProgram, "uTranslation");
+        shaderProgram.scaleUniform = gl.getUniformLocation(shaderProgram, "uScale");
+        
+        gl.uniform2fv(shaderProgram.scaleUniform, [1, 1]);
+    }
+
+    var vertices;
+    var vertexBuffer;
+
+    function initBuffers() {
+    
+        vertices = [
+            // нижняя черта
+            -0.4, -0.5, 0,
+            0.4, -0.5, 0,
+            0.4, -0.4, 0,
+            0.4, -0.4, 0,
+            -0.4, -0.4, 0,
+            -0.4, -0.5, 0,
+            
+            // средняя черта
+            -0.4, -0.05, 0,
+            0.4, -0.05, 0,
+            0.4, 0.05, 0,
+            0.4, 0.05, 0,
+            -0.4, 0.05, 0,
+            -0.4, -0.05, 0,
+            
+            // верхняя черта
+            -0.4, 0.5, 0,
+            0.4, 0.5, 0,
+            0.4, 0.4, 0,
+            0.4, 0.4, 0,
+            -0.4, 0.4, 0,
+            -0.4, 0.5, 0,
+            
+            // левая черта
+            -0.4, 0.5, 0,
+            -0.4, -0.5, 0,
+            -0.3, -0.5, 0,
+            -0.3, -0.5, 0,
+            -0.3, 0.5, 0,
+            -0.4, 0.5, 0,
+            
+            // правая черта
+            0.4, 0.05, 0,
+            0.4, -0.5, 0,
+            0.3, -0.5, 0,
+            0.3, -0.5, 0,
+            0.3, 0.05, 0,
+            0.4, 0.05, 0
+        ];
+    
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        
+        vertexBuffer.itemSize = 3;
+        vertexBuffer.numItems = vertices.length / 3;
+    }
+    
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        gl.drawArrays(gl.TRIANGLES, 0, vertexBuffer.numItems);
+    }
+
+	function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+    }
+    
+    function webGLStart() {
+        var canvas = document.getElementById("canvas");
+        initEvents();
+        initGL(canvas);
+        initShaders();
+
+        gl.clearColor(0, 0.67, 0.68, 0.3);
+        
+        initBuffers();
+        tick();
+    }
+    
+    function initEvents() {
+        var canvas = document.getElementById("canvas");
+        document.onmousemove=onMouseMove;
+        document.onmouseup=onMouseUp;
+        canvas.onmousedown=onMouseDown;
+    }
+
+    var dragStartX = 0;
+    var dragStartY = 0;
+    var dragOffset = [0, 0];
+    
+    var mousePressed = false;
+    
+    var translation = [0, 0];
+    var scale = [1, 1];
+    
+    var currentEvent;
+    var eventType = {
+        drag: 1,
+        scale: 2
+    };
+    
+    function onMouseDown(evt){
+        if (evt.shiftKey) {
+            currentEvent = eventType.scale;
+        } else {
+            currentEvent = eventType.drag;
+        }
+        dragStartX = evt.clientX;
+        dragStartY = evt.clientY;
+        dragOffset = [0, 0];
+        mousePressed = true;
+    }
+    
+    function onMouseMove(evt) {
+        if (mousePressed) {
+            var diffX = evt.clientX - dragStartX;
+            var diffY = dragStartY - evt.clientY;
+            if (currentEvent === eventType.drag) {
+                dragOffset = [diffX * 2 / 500, diffY * 2 / 500];
+                var finalTranslation = [translation[0] + dragOffset[0], translation[1] + dragOffset[1]]
+                gl.uniform2fv(shaderProgram.translationUniform, finalTranslation);
+            } else if (currentEvent === eventType.scale) {
+                dragOffset = [diffX / 100, diffY / 100];
+                var finalScale = [scale[0] + dragOffset[0], scale[1] + dragOffset[1]]
+                gl.uniform2fv(shaderProgram.scaleUniform, finalScale);
+            }
+        }
+    }
+    
+    function onMouseUp(evt){
+        if (mousePressed) {
+            if (currentEvent === eventType.drag) {
+                translation = [translation[0] + dragOffset[0], translation[1] + dragOffset[1]];
+            } else if (currentEvent === eventType.scale) {
+                scale = [scale[0] + dragOffset[0], scale[1] + dragOffset[1]]
+            }
+            mousePressed = false;
+        }
+    }
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
+
+</html>
