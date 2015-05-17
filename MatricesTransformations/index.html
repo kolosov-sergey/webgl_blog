@@ -1,0 +1,344 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+<title>Преобразования с помощью матриц</title>
+<meta content="charset=utf-8">
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    void main(void) {
+        gl_FragColor = vec4(0.3, 0.6, 0.1, 1.0);
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+
+    uniform mat4 uMVMatrix;
+
+    void main(void) {
+        gl_Position = uMVMatrix * vec4(aVertexPosition, 1.0);
+    }
+</script>
+
+
+<script type="text/javascript">
+    window.requestAnimFrame = (function() {
+	  return window.requestAnimationFrame ||
+			 window.webkitRequestAnimationFrame ||
+			 window.mozRequestAnimationFrame ||
+			 window.oRequestAnimationFrame ||
+			 window.msRequestAnimationFrame ||
+			 function(callback, element) {
+			   window.setTimeout(callback, 1000/60);
+			 };
+	})();
+    
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+    var shaderProgram;
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.mvMatrix = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        gl.uniformMatrix4fv(shaderProgram.mvMatrix, false, createIdentityMatrix());
+    }
+
+    var vertices;
+    var vertexBuffer;
+
+    function initBuffers() {
+    
+        vertices = [
+            // нижняя черта
+            -0.4, -0.5, 0,
+            0.4, -0.5, 0,
+            0.4, -0.4, 0,
+            0.4, -0.4, 0,
+            -0.4, -0.4, 0,
+            -0.4, -0.5, 0,
+            
+            // средняя черта
+            -0.4, -0.05, 0,
+            0.4, -0.05, 0,
+            0.4, 0.05, 0,
+            0.4, 0.05, 0,
+            -0.4, 0.05, 0,
+            -0.4, -0.05, 0,
+            
+            // верхняя черта
+            -0.4, 0.5, 0,
+            0.4, 0.5, 0,
+            0.4, 0.4, 0,
+            0.4, 0.4, 0,
+            -0.4, 0.4, 0,
+            -0.4, 0.5, 0,
+            
+            // левая черта
+            -0.4, 0.5, 0,
+            -0.4, -0.5, 0,
+            -0.3, -0.5, 0,
+            -0.3, -0.5, 0,
+            -0.3, 0.5, 0,
+            -0.4, 0.5, 0,
+            
+            // правая черта
+            0.4, 0.05, 0,
+            0.4, -0.5, 0,
+            0.3, -0.5, 0,
+            0.3, -0.5, 0,
+            0.3, 0.05, 0,
+            0.4, 0.05, 0
+        ];
+    
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        
+        vertexBuffer.itemSize = 3;
+        vertexBuffer.numItems = vertices.length / 3;
+    }
+    
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        gl.drawArrays(gl.TRIANGLES, 0, vertexBuffer.numItems);
+    }
+
+	function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+    }
+    
+    function webGLStart() {
+        var canvas = document.getElementById("canvas");
+        initEvents();
+        initGL(canvas);
+        initShaders();
+
+        gl.clearColor(0, 0.67, 0.68, 0.3);
+        
+        initBuffers();
+        tick();
+    }
+    
+    // единичная матрица
+    function createIdentityMatrix() {
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        ];
+    }
+    
+    // матрица переноса
+    function createTranslationMatrix(tx, ty) {
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 1,
+            tx, ty, 0, 1
+        ];
+    }
+    
+    // матрица масштабирования
+    function createScaleMatrix(sx, sy) {
+        return [
+            sx, 0,  0, 0,
+            0,  sy, 0, 0,
+            0,  0,  1, 0,
+            0,  0,  0, 1
+        ];
+    }
+    
+    // матрица поворота по оси Z
+    function createRotationMatrix(angle) {
+        var angleRad = angle * Math.PI / 180;
+        var c = Math.cos(angleRad);
+        var s = Math.sin(angleRad);
+        return [
+            c, -s, 0, 0,
+            s,  c, 0, 0,
+            0,  0, 1, 0,
+            0,  0, 0, 1
+        ];
+    }
+    
+    function multiplyMatrices(m1, m2) {
+        return [
+            m1[0] * m2[0] + m1[1] * m2[4] + m1[2] * m2[8] + m1[3] * m2[12],
+            m1[0] * m2[1] + m1[1] * m2[5] + m1[2] * m2[9] + m1[3] * m2[13],
+            m1[0] * m2[2] + m1[1] * m2[6] + m1[2] * m2[10] + m1[3] * m2[14],
+            m1[0] * m2[3] + m1[1] * m2[7] + m1[2] * m2[11] + m1[3] * m2[15],
+            
+            m1[4] * m2[0] + m1[5] * m2[4] + m1[6] * m2[8] + m1[7] * m2[12],
+            m1[4] * m2[1] + m1[5] * m2[5] + m1[6] * m2[9] + m1[7] * m2[13],
+            m1[4] * m2[2] + m1[5] * m2[6] + m1[6] * m2[10] + m1[7] * m2[14],
+            m1[4] * m2[3] + m1[5] * m2[7] + m1[6] * m2[11] + m1[7] * m2[15],
+            
+            m1[8] * m2[0] + m1[9] * m2[4] + m1[10] * m2[8] + m1[11] * m2[12],
+            m1[8] * m2[1] + m1[9] * m2[5] + m1[10] * m2[9] + m1[11] * m2[13],
+            m1[8] * m2[2] + m1[9] * m2[6] + m1[10] * m2[10] + m1[11] * m2[14],
+            m1[8] * m2[3] + m1[9] * m2[7] + m1[10] * m2[11] + m1[11] * m2[15],
+            
+            m1[12] * m2[0] + m1[13] * m2[4] + m1[14] * m2[8] + m1[15] * m2[12],
+            m1[12] * m2[1] + m1[13] * m2[5] + m1[14] * m2[9] + m1[15] * m2[13],
+            m1[12] * m2[2] + m1[13] * m2[6] + m1[14] * m2[10] + m1[15] * m2[14],
+            m1[12] * m2[3] + m1[13] * m2[7] + m1[14] * m2[11] + m1[15] * m2[15]
+        ];
+    }
+    
+    var mTranslation = createIdentityMatrix();
+    var mScale = createIdentityMatrix();;
+    var mRotation = createIdentityMatrix();;
+    
+    function initEvents() {
+        var canvas = document.getElementById("canvas");
+        document.onmousemove=onMouseMove;
+        document.onmouseup=onMouseUp;
+        canvas.onmousedown=onMouseDown;
+    }
+
+    var dragStartX = 0;
+    var dragStartY = 0;
+    var dragOffset = [0, 0];
+    
+    var mousePressed = false;
+    
+    var translation = [0, 0];
+    var scale = [1, 1];
+    var rotation = 0;
+    
+    var currentEvent;
+    var eventType = {
+        drag: 1,
+        scale: 2,
+        rotate: 3
+    };
+    
+    function onMouseDown(evt){
+        if (evt.shiftKey) {
+            currentEvent = eventType.scale;
+        } else if (evt.ctrlKey) {
+            currentEvent = eventType.rotate;
+        } else {
+            currentEvent = eventType.drag;
+        }
+        dragStartX = evt.clientX;
+        dragStartY = evt.clientY;
+        dragOffset = [0, 0];
+        mousePressed = true;
+    }
+    
+    function onMouseMove(evt) {
+        if (mousePressed) {
+            var diffX = evt.clientX - dragStartX;
+            var diffY = dragStartY - evt.clientY;
+            if (currentEvent === eventType.drag) {
+                dragOffset = [diffX * 2 / 500, diffY * 2 / 500];
+                var finalTranslation = [translation[0] + dragOffset[0], translation[1] + dragOffset[1]];
+                mTranslation = createTranslationMatrix(finalTranslation[0], finalTranslation[1]);
+            } else if (currentEvent === eventType.scale) {
+                dragOffset = [diffX / 100, diffY / 100];
+                var finalScale = [scale[0] + dragOffset[0], scale[1] + dragOffset[1]]
+                mScale = createScaleMatrix(finalScale[0], finalScale[1]);
+            } else if (currentEvent === eventType.rotate) {
+                dragOffset = diffX;
+                mRotation = createRotationMatrix(rotation + dragOffset);
+            }
+            
+            var mvMatrix = multiplyMatrices(mScale, mRotation);
+            mvMatrix = multiplyMatrices(mvMatrix, mTranslation);
+            gl.uniformMatrix4fv(shaderProgram.mvMatrix, false, mvMatrix);
+        }
+    }
+    
+    function onMouseUp(evt){
+        if (mousePressed) {
+            if (currentEvent === eventType.drag) {
+                translation = [translation[0] + dragOffset[0], translation[1] + dragOffset[1]];
+            } else if (currentEvent === eventType.scale) {
+                scale = [scale[0] + dragOffset[0], scale[1] + dragOffset[1]];
+            } else if (currentEvent === eventType.rotate) {
+                rotation = rotation + dragOffset;
+            }
+            mousePressed = false;
+        }
+    }
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
+
+</html>
