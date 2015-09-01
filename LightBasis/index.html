@@ -1,0 +1,461 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+<title>Основы освещения</title>
+<meta content="charset=utf-8">
+
+<script type="text/javascript" src="jscolor.js"></script>
+<script type="text/javascript" src="webgl-utils.js"></script>
+<script type="text/javascript" src="gl-matrix-min.js"></script>
+
+<!-- Ламберт - Гуро -->
+<script id="LambertGoraudVS" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat3 uNMatrix;
+    
+    uniform vec3 uColor;
+    
+    varying vec4 vFinalColor;
+    
+    // направление освещения
+    const vec3 vLightDirection = vec3(2.0, -1.0, -1.0);
+    
+    void main(void) {
+        // получаем нормаль с учетом вращения фигуры
+        vec3 N = normalize(uNMatrix * aVertexNormal);
+        // нормализованный вектор освещения
+        vec3 L = normalize(vLightDirection);
+        // находим силу света по Ламберту
+        float lambertComponent = max(dot(N, -L), 0.0);
+        // получаем итоговый цвет из цвета объекта и освещения
+        vec3 diffuseLight = uColor * lambertComponent;
+        vFinalColor = vec4(diffuseLight, 1.0);
+    
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    }
+</script>
+
+<script id="LambertGoraudFS" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec4 vFinalColor;
+
+    void main(void) {
+        gl_FragColor = vFinalColor;
+    }
+</script>
+
+
+<!-- Ламберт - Фонг -->
+<script id="LambertPhongVS" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat3 uNMatrix;
+    
+    varying vec3 vNormal;
+    
+    void main(void) {
+        // получаем нормаль с учетом вращения фигуры
+        vNormal = normalize(uNMatrix * aVertexNormal);
+    
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    }
+</script>
+
+<script id="LambertPhongFS" type="x-shader/x-fragment">
+    precision mediump float;
+
+    uniform vec3 uColor;
+
+    varying vec3 vNormal;
+
+    // направление освещения
+    const vec3 vLightDirection = vec3(2.0, -1.0, -1.0);
+    
+    void main(void) {
+        // нормализованный вектор освещения
+        vec3 L = normalize(vLightDirection);
+        // нормализуем нормаль, переданную из вершинного шейдера
+        vec3 N = normalize(vNormal);
+        // находим силу света по Ламберту
+        float lambertComponent = max(dot(N, -L), 0.0);
+        // получаем итоговый цвет из цвета объекта и освещения
+        vec3 diffuseLight = uColor * lambertComponent;
+        gl_FragColor = vec4(diffuseLight, 1.0);
+    }
+</script>
+
+
+<!-- Фонг - Гуро -->
+<script id="PhongGoraudVS" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat3 uNMatrix;
+    
+    uniform vec3 uColor;
+    
+    varying vec4 vFinalColor;
+    
+    // направление освещения
+    const vec3 vLightDirection = vec3(2.0, -1.0, -1.0);
+    // блеск материала
+    const float shiness = 20.0;
+    
+    void main(void) {
+        vec4 vertex = uMVMatrix * vec4(aVertexPosition, 1.0);
+        
+        // фоновое освещение
+        vec3 ambientLight = vec3(0.0, 0.0, 0.0);
+        
+        // блок расчета освещения по Ламберту - диффузное освещение
+        vec3 N = normalize(uNMatrix * aVertexNormal);
+        vec3 L = normalize(vLightDirection);
+        float lambertComponent = max(dot(N, -L), 0.0);
+        vec3 diffuseLight = uColor * lambertComponent;
+        
+        // рассчитываем блики...
+        // так как наша камера в центре системы координат,
+        // вектор камеры - просто обратный вектор до точки
+        vec3 eyeVec = -vec3(vertex.xyz);
+        vec3 R = normalize(eyeVec);
+        // функция reflect рассчитает за нас отраженный вектор
+        vec3 E = reflect(L, N);
+        // сила бликов согласно формуле
+        float specular = pow(max(dot(E, R), 0.0), shiness);
+        // наконец, получаем последний компонент - блики
+        vec3 specularLight = uColor * specular; 
+        
+        // итоговый цвет = фоновое + диффузное + блики
+        vec3 sumColor = ambientLight + diffuseLight + specularLight;
+        
+        vFinalColor = vec4(sumColor, 1.0);
+    
+        gl_Position = uPMatrix * vertex;
+    }
+</script>
+
+<script id="PhongGoraudFS" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec4 vFinalColor;
+
+    void main(void) {
+        gl_FragColor = vFinalColor;
+    }
+</script>
+
+
+<!-- Фонг - Фонг -->
+<script id="PhongPhongVS" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat3 uNMatrix;
+    
+    varying vec3 vNormal;
+    varying vec4 vVertex;
+    
+    void main(void) {
+        // уже привычная нормаль
+        vNormal = normalize(uNMatrix * aVertexNormal);
+        // вершина с учетом трансформаций - можем получить только в вершинном шейдере
+        vVertex = uMVMatrix * vec4(aVertexPosition, 1.0);
+    
+        gl_Position = uPMatrix * vVertex;
+    }
+</script>
+
+<script id="PhongPhongFS" type="x-shader/x-fragment">
+    precision mediump float;
+
+    uniform vec3 uColor;
+    
+    varying vec4 vVertex;
+    varying vec3 vNormal;
+    varying vec4 vFinalColor;
+
+    // направление освещения
+    const vec3 vLightDirection = vec3(2.0, -1.0, -1.0);
+    const float shiness = 20.0;
+    
+    void main(void) {
+        // фоновое освещение
+        vec3 ambientLight = vec3(0.0, 0.0, 0.0);
+        
+        // блок расчета освещения по Ламберту - диффузное освещение
+        vec3 N = normalize(vNormal);
+        vec3 L = normalize(vLightDirection);
+        float lambertComponent = max(dot(N, -L), 0.0);
+        vec3 diffuseLight = uColor * lambertComponent;
+        
+        // рассчитываем блики...
+        // так как наша камера в центре системы координат,
+        // вектор камеры - просто обратный вектор до точки
+        vec3 eyeVec = -vec3(vVertex.xyz);
+        vec3 R = normalize(eyeVec);
+        // функция reflect рассчитает за нас отраженный вектор
+        vec3 E = reflect(L, N);
+        // сила бликов согласно формуле
+        float specular = pow(max(dot(E, R), 0.0), shiness);
+        // наконец, получаем последний компонент - блики
+        vec3 specularLight = uColor * specular; 
+        
+        // итоговый цвет = фоновое + диффузное + блики
+        vec3 sumColor = ambientLight + diffuseLight + specularLight;
+        
+        gl_FragColor = vec4(sumColor, 1.0);
+    }
+</script>
+
+
+<script type="text/javascript">
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = getWebglContext(canvas);
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function createProgram(vertexShaderId, fragmentShaderId) {
+        var vertexShader = getShader(gl, vertexShaderId);
+        var fragmentShader = getShader(gl, fragmentShaderId);
+
+        var shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+        
+        shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        shaderProgram.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+        
+        shaderProgram.colorUniform = gl.getUniformLocation(shaderProgram, "uColor");
+        
+        return shaderProgram;
+    }
+    
+    var currentColor;
+
+    var currentProgram;
+    var programs = {};
+
+    function initShaders() {
+        programs["lambertGuro"] = createProgram("LambertGoraudVS", "LambertGoraudFS");
+        programs["lambertPhongProgram"] = createProgram("LambertPhongVS", "LambertPhongFS");
+        programs["phongGuroProgram"] = createProgram("PhongGoraudVS", "PhongGoraudFS");
+        programs["phongPhongProgram"] = createProgram("PhongPhongVS", "PhongPhongFS");
+        
+        currentProgram = programs["lambertGuro"];
+        gl.useProgram(currentProgram);
+
+        currentColor = [0.0, 1.0, 0.0];
+        gl.uniform3fv(currentProgram.colorUniform, currentColor);
+    }
+    
+    function changeProgram(programId) {
+        currentProgram = programs[programId];
+        gl.useProgram(currentProgram);
+        gl.uniform3fv(currentProgram.colorUniform, currentColor);
+    }
+
+
+    var mvMatrix = mat4.create();
+    var pMatrix = mat4.create();
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(currentProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(currentProgram.mvMatrixUniform, false, mvMatrix);
+        
+        var normalMatrix = mat3.create();
+        mat3.normalFromMat4(normalMatrix, mvMatrix);
+        gl.uniformMatrix3fv(currentProgram.nMatrixUniform, false, normalMatrix);
+    }
+
+    var vertices;
+    var indices;
+    var vertexNormals;
+    var vertexBuffer;
+    var indexBuffer;
+    var vertexNormalBuffer;
+
+    function initBuffers() {
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        
+        vertexBuffer.itemSize = 3;
+        vertexBuffer.numItems = vertices.length / 3;
+        
+        indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        
+        indexBuffer.itemSize = 1;
+        indexBuffer.numItems = indices.length;
+        
+        vertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexNormals), gl.STATIC_DRAW);
+        vertexNormalBuffer.itemSize = 3;
+        vertexNormalBuffer.numItems = vertexNormals / 3;
+    }
+    
+    var rX = 0;
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(pMatrix, 45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+        mat4.identity(mvMatrix);
+        
+        mat4.translate(mvMatrix, mvMatrix, [0.0, 0, -3.0]);
+        mat4.rotateX(mvMatrix, mvMatrix, degToRad(rX));
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(currentProgram.vertexPositionAttribute, vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexNormalBuffer);
+        gl.vertexAttribPointer(currentProgram.vertexNormalAttribute, vertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        setMatrixUniforms();
+        
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.drawElements(gl.TRIANGLES, indexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    }
+
+    var lastTime = 0;
+    
+    function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+            rX += (20 * elapsed) / 1000.0;
+        }
+        lastTime = timeNow;
+    }
+    
+    function tick() {
+        requestAnimationFrame(tick);
+        drawScene();
+        animate();
+    }
+    
+    function webGLStart() {
+        var canvas = document.getElementById("canvas");
+        initGL(canvas);
+        initShaders();
+
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+        
+        loadJsonModel();
+    }
+    
+    function parseCollada(colladaXml) {
+        var xmlDoc;
+        
+        // создаем парсер DOM
+        if (window.DOMParser) {
+            var parser = new DOMParser();
+            xmlDoc = parser.parseFromString(colladaXml, "text/xml");
+        } else { // Internet Explorer
+            xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+            xmlDoc.async=false;
+            xmlDoc.loadXML(colladaXml);
+        }
+        
+        var jsonResult = {};
+        // находим /COLLADA/library_geometries/geometry/mesh/source/float_array
+        var mesh = xmlDoc.getElementsByTagName("mesh")[0];
+        var verticesSources = mesh.getElementsByTagName("source")[0];
+        var verticesNode = verticesSources.getElementsByTagName("float_array")[0];
+        // в этой секции хранятся координаты через пробел - получаем их массив
+        jsonResult.vertices = verticesNode.textContent.split(" ");
+        
+        var normalsSources = mesh.getElementsByTagName("source")[1];
+        var normalsNode = normalsSources.getElementsByTagName("float_array")[0];
+        // по аналогии получаем нормали
+        jsonResult.normals = normalsNode.textContent.split(" ");
+        
+        // находим /COLLADA/library_geometries/geometry/mesh/polylist/p
+        var polyNode = mesh.getElementsByTagName("polylist")[0];
+        var indecesNode = polyNode.getElementsByTagName("p")[0];
+        var allIndices = indecesNode.textContent.split(" ");
+        jsonResult.indices = [];
+        // нужные нам индексы вершин находятся в 0, 3, 6 и т.д.
+        for (var i = 0; i < allIndices.length; i += 2) {
+            jsonResult.indices.push(allIndices[i]);
+        }
+        
+        return jsonResult;
+    }
+    
+    function loadJsonModel() {
+        var request = new XMLHttpRequest();
+        request.open("GET", "torus.xml");
+        request.onreadystatechange = function() {
+            if (request.readyState == 4) {
+                var colladaJson = parseCollada(request.responseText);
+                vertices = colladaJson.vertices;
+                vertexNormals = colladaJson.normals;
+                indices = colladaJson.indices;
+                initBuffers();
+                tick();
+            }
+        }
+        request.send();
+    }
+    
+    function updateColor(elem) {
+        currentColor = elem.rgb;
+        gl.uniform3fv(currentProgram.colorUniform, currentColor);
+    }
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+    <input class="color {onImmediateChange:'updateColor(this);'}" value="00ff00" />
+    <br />
+    Тип освещения: 
+    <select onchange="changeProgram(this.value)">
+        <option value="lambertGuro">Отражение Ламберта, интерполяция Гуро</option>
+        <option value="lambertPhongProgram">Отражение Ламберта, интерполяция Фонга</option>
+        <option value="phongGuroProgram">Отражение Фонга, интерполяция Гуро</option>
+        <option value="phongPhongProgram">Отражение Фонга, интерполяция Фонга</option>
+    <select>
+    <br />
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
+
+</html>
