@@ -1,0 +1,286 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+<title>Точечное освещение</title>
+<meta content="charset=utf-8">
+
+<script type="text/javascript" src="jscolor.js"></script>
+<script type="text/javascript" src="webgl-utils.js"></script>
+<script type="text/javascript" src="gl-matrix-min.js"></script>
+
+<!-- Фонг - Фонг -->
+<script id="PhongPhongVS" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat3 uNMatrix;
+    
+    varying vec3 vNormal;
+    varying vec4 vVertex;
+    
+    void main(void) {
+        vNormal = normalize(uNMatrix * aVertexNormal);
+        vVertex = uMVMatrix * vec4(aVertexPosition, 1.0);
+    
+        gl_Position = uPMatrix * vVertex;
+    }
+</script>
+
+<script id="PhongPhongFS" type="x-shader/x-fragment">
+    precision mediump float;
+
+    uniform vec3 uColor;
+    
+    varying vec4 vVertex;
+    varying vec3 vNormal;
+    varying vec4 vFinalColor;
+    
+    uniform mat4 uLightMatrix;
+    
+    uniform vec3 uPointLightLocation;
+    
+    uniform vec3 uAmbientLightColor;
+    uniform float uAmbientLightWeight;
+
+    const float shiness = 30.0;
+    
+    void main(void) {
+        vec4 lightLocation = uLightMatrix * vec4(uPointLightLocation, 1.0);
+        vec3 lightDirection = lightLocation.xyz - vVertex.xyz;
+        
+        vec3 N = normalize(vNormal);
+        vec3 L = normalize(lightDirection);
+        float lambertComponent = max(dot(N, -L), 0.0);
+        vec3 diffuseLight = uColor * lambertComponent;
+        
+        vec3 eyeVec = -vec3(vVertex.xyz);
+        vec3 R = normalize(eyeVec);
+        vec3 E = reflect(L, N);
+        float specular = pow(max(dot(E, R), 0.0), shiness);
+        vec3 specularLight = uColor * specular; 
+        
+        vec3 sumColor = uAmbientLightColor * uAmbientLightWeight / 20.0 + diffuseLight + specularLight;
+        
+        gl_FragColor = vec4(sumColor, 1.0);
+    }
+</script>
+
+
+<script type="text/javascript">
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = getWebglContext(canvas);
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function createProgram(vertexShaderId, fragmentShaderId) {
+        var vertexShader = getShader(gl, vertexShaderId);
+        var fragmentShader = getShader(gl, fragmentShaderId);
+
+        var shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+        
+        shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        shaderProgram.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+        
+        shaderProgram.lightMatrixUniform = gl.getUniformLocation(shaderProgram, "uLightMatrix");
+        
+        shaderProgram.pointLightLocation = gl.getUniformLocation(shaderProgram, "uPointLightLocation");
+        shaderProgram.ambientLightColor = gl.getUniformLocation(shaderProgram, "uAmbientLightColor");
+        shaderProgram.ambientLightWeight = gl.getUniformLocation(shaderProgram, "uAmbientLightWeight");
+        
+        shaderProgram.colorUniform = gl.getUniformLocation(shaderProgram, "uColor");
+        
+        return shaderProgram;
+    }
+    
+    var materialColor;
+    var ambientLightColor;
+    var ambientLightWeight;
+
+    var currentProgram;
+
+    function initShaders() {
+        currentProgram = createProgram("PhongPhongVS", "PhongPhongFS");
+        gl.useProgram(currentProgram);
+        
+        materialColor = [0.546, 0.609, 1.0];
+        gl.uniform3fv(currentProgram.colorUniform, materialColor);
+        ambientLightColor = [1.0, 1.0, 1.0];
+        gl.uniform3fv(currentProgram.ambientLightColor, ambientLightColor);
+        ambientLightWeight = 2.0;
+        gl.uniform1f(currentProgram.ambientLightWeight, ambientLightWeight);
+        
+        gl.uniform3fv(currentProgram.pointLightLocation, [0.0, 0.0, -1000.0]);
+    }
+
+    var mvMatrix = mat4.create();
+    var pMatrix = mat4.create();
+    var lightMatrix = mat4.create();
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(currentProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(currentProgram.mvMatrixUniform, false, mvMatrix);
+        gl.uniformMatrix4fv(currentProgram.lightMatrixUniform, false, lightMatrix);
+        
+        var normalMatrix = mat3.create();
+        mat3.normalFromMat4(normalMatrix, mvMatrix);
+        gl.uniformMatrix3fv(currentProgram.nMatrixUniform, false, normalMatrix);
+    }
+
+    var vertices;
+    var indices;
+    var vertexNormals;
+    var vertexBuffer;
+    var indexBuffer;
+    var vertexNormalBuffer;
+
+    function initBuffers() {
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        
+        vertexBuffer.itemSize = 3;
+        vertexBuffer.numItems = vertices.length / 3;
+        
+        indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+        
+        indexBuffer.itemSize = 1;
+        indexBuffer.numItems = indices.length;
+        
+        vertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexNormals), gl.STATIC_DRAW);
+        vertexNormalBuffer.itemSize = 3;
+        vertexNormalBuffer.numItems = vertexNormals / 3;
+    }
+    
+    var rY = 0;
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(pMatrix, 45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+        mat4.identity(mvMatrix);
+        
+        mat4.translate(mvMatrix, mvMatrix, [0.0, 0, -40.0]);
+        mat4.rotateX(mvMatrix, mvMatrix, degToRad(20));
+        
+        lightMatrix = mat4.identity(lightMatrix);
+        mat4.rotateY(lightMatrix, lightMatrix, degToRad(rY));
+        mat4.translate(lightMatrix, lightMatrix, [0.0, 0.0, -1000.0]);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(currentProgram.vertexPositionAttribute, vertexBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexNormalBuffer);
+        gl.vertexAttribPointer(currentProgram.vertexNormalAttribute, vertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        
+        setMatrixUniforms();
+        
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.drawElements(gl.TRIANGLES, indexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+    }
+
+    var lastTime = 0;
+    
+    function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+            rY += (30 * elapsed) / 1000.0;
+        }
+        lastTime = timeNow;
+    }
+    
+    function tick() {
+        requestAnimationFrame(tick);
+        drawScene();
+        animate();
+    }
+    
+    function webGLStart() {
+        var canvas = document.getElementById("canvas");
+        initGL(canvas);
+        initShaders();
+
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+        
+        loadJsonModel();
+    }
+    
+    function loadJsonModel() {
+        var request = new XMLHttpRequest();
+        request.open("GET", "Teapot.json");
+        request.onreadystatechange = function() {
+            if (request.readyState == 4) {
+                var jsonObj = JSON.parse(request.responseText);
+                vertices = jsonObj.vertexPositions;
+                vertexNormals = jsonObj.vertexNormals;
+                indices = jsonObj.indices;
+                initBuffers();
+                tick();
+            }
+        }
+        request.send();
+    }
+    
+    function updateMaterialColor(elem) {
+        materialColor = elem.rgb;
+        gl.uniform3fv(currentProgram.colorUniform, materialColor);
+    }
+    
+    function updateAmbientLightColor(elem) {
+        ambientLightColor = elem.rgb;
+        gl.uniform3fv(currentProgram.ambientLightColor, ambientLightColor);
+    }
+    
+    function updateAmbientLightWeight(elem) {
+        ambientLightWeight = elem.value;
+        gl.uniform1f(currentProgram.ambientLightWeight, ambientLightWeight);
+    }
+</script>
+
+</head>
+
+<body onload="webGLStart();">
+    <input class="color {onImmediateChange:'updateMaterialColor(this);'}" value="8C9CFF" />
+    Цвет материала
+    <br />
+    <input class="color {onImmediateChange:'updateAmbientLightColor(this);'}" value="FFFFFF" />
+    Цвет фонового освещения
+    <br />
+    <input type="number" value="2" onchange="updateAmbientLightWeight(this)" />
+    Сила фонового освещения
+    <br />
+    <br />
+    <canvas id="canvas" width="500" height="500"></canvas>
+</body>
+</html>
