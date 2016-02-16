@@ -1,0 +1,167 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Слои в OpenLayers 3</title>
+    <link rel="stylesheet" href="ol.css">
+    <script src="ol.js"></script>
+</head>
+<body>
+    <div id="map" style="width: 80%; height: 400px; float: right;"></div>
+    <div id="layers" style="width: 20%; height: 400px;"></div>
+    <script>
+        var map = new ol.Map({
+          target: 'map'
+        });
+
+        var osmLayer = new ol.layer.Tile({
+            source: new ol.source.OSM()
+        });
+        osmLayer.name = 'OpenStreetMap';
+        map.addLayer(osmLayer);
+        
+        var currentLayer = osmLayer;
+
+        var bingLabelledAerials = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.BingMaps({
+                key: 'AkPePzQAUoC7qKlVTNT4nw0Ykq2EJ4nLE9Iq8-7NZY4wI2Owxebqqur_4zMiboZh',
+                imagerySet: "AerialWithLabels",
+                maxZoom: 19
+            })
+        });
+        bingLabelledAerials.name = 'Bing Космос';
+        map.addLayer(bingLabelledAerials);
+        
+        var bingRoad = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.BingMaps({
+                key: 'AkPePzQAUoC7qKlVTNT4nw0Ykq2EJ4nLE9Iq8-7NZY4wI2Owxebqqur_4zMiboZh',
+                imagerySet: "Road",
+                maxZoom: 19
+            })
+        });
+        bingRoad.name = 'Bing Карта';
+        map.addLayer(bingRoad);
+        
+        var mapQuestOsm = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.MapQuest({layer: 'osm'})
+        });
+        mapQuestOsm.name = 'MapQuest карта';
+        map.addLayer(mapQuestOsm);
+        
+        var mapQuestHybrid = new ol.layer.Group({
+            visible: false,
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.MapQuest({layer: 'sat'})
+                }),
+                new ol.layer.Tile({
+                    source: new ol.source.MapQuest({layer: 'hyb'})
+                })
+            ]
+        });
+        mapQuestHybrid.name = 'MapQuest космоснимок+надписи';
+        map.addLayer(mapQuestHybrid);
+        
+        var stamenWatercolor = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.Stamen({
+                layer: 'watercolor'
+            })
+        });
+        stamenWatercolor.name = 'Stamen Watercolor';
+        map.addLayer(stamenWatercolor);
+        
+        var stamenToner = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.Stamen({
+                layer: 'toner'
+            })
+        });
+        stamenToner.name = 'Stamen Toner';
+        map.addLayer(stamenToner);
+        
+        var cycleMap = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.XYZ({
+                url: 'http://{a-c}.tile.opencyclemap.org/cycle/{z}/{x}/{y}.png'
+            })
+        });
+        cycleMap.name = 'XYZ - веломаршруты';
+        map.addLayer(cycleMap);
+        
+        var arcgisImagery = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.TileArcGISRest({
+                url: 'http://server.arcgisonline.com/arcgis/rest/services/ESRI_Imagery_World_2D/MapServer'
+            })
+        });
+        arcgisImagery.name = 'ArcGIS Космос';
+        map.addLayer(arcgisImagery);
+        
+        var arcgisStreetMap = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.TileArcGISRest({
+                url: 'http://server.arcgisonline.com/arcgis/rest/services/ESRI_StreetMap_World_2D/MapServer'
+            })
+        });
+        arcgisStreetMap.name = 'ArcGIS Карта';
+        map.addLayer(arcgisStreetMap);
+        
+        var wmsLayer = new ol.layer.Tile({
+            visible: false,
+            source: new ol.source.TileWMS({
+                url: 'http://129.206.228.72/cached/osm',
+                params: {'LAYERS': 'osm_auto:all'},
+            })
+        });
+        wmsLayer.name = 'WMS';
+        map.addLayer(wmsLayer);
+        
+        var view = new ol.View({
+          center: [ 4188426.7147939987, 7508764.236877314 ],
+          zoom: 9
+        });
+        map.setView(view);
+        
+        createLayers();
+        
+        
+        
+        function switchLayer() {
+            var layerName = this.value;
+            map.getLayers().forEach(function (layer){
+                if (layer.name === layerName) {
+                    currentLayer.setVisible(false);
+                    layer.setVisible(true);
+                    currentLayer = layer;
+                    return;
+                }
+            });
+        };
+        
+        function createLayers() {
+            var layerList = document.getElementById('layers');
+            map.getLayers().forEach(function (layer){
+                var layerElement = document.createElement('input');
+                layerElement.type = 'radio';
+                layerElement.name = 'layers';
+                layerElement.value = layer.name;
+                layerElement.id = layer.name;
+                layerElement.onclick = switchLayer;
+                if (layer.getVisible()) { layerElement.checked = true; }
+                layerList.appendChild(layerElement);
+                
+                var label = document.createElement('label');
+                label.htmlFor = layer.name;
+                label.innerHTML = layer.name;
+                layerList.appendChild(label);
+                
+                layerList.appendChild(document.createElement('br'));
+            });
+        }
+    </script>
+</body>
+</html>
