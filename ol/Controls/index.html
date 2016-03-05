@@ -1,0 +1,82 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Контролы OpenLayers</title>
+    <link rel="stylesheet" href="ol.css">
+    <script src="ol.js"></script>
+    <style>
+        /* задаем фон для отображения координат */
+        .ol-mouse-position {
+            background-color: rgba(0, 60, 136, .4);
+            border-radius: 4px;
+            color: #eee;
+            padding: 1px 5px;
+        }
+        
+        
+        /* поднимаем копирайты повыше */
+        .ol-attribution {
+            bottom: 2em;
+        }
+        
+        
+        /* контрол масштаба сдвигаем вправо */
+        .ol-scale-line {
+            left: auto;
+            right: 8px;
+        }
+        
+        
+        /* полоску масштабов заливаем более заметным цветом */
+        .ol-zoomslider {
+            background-color: rgba(0, 60, 136, .4);
+        }
+        
+        .ol-zoomslider:hover {
+            background-color: rgba(0, 60, 136, .6);
+        }
+        
+        .ol-zoomslider button {
+            background-color: rgba(255, 255, 255, .8);
+        }
+        
+        .ol-zoomslider button:hover {
+            background-color: rgba(255, 255, 255, 1);
+        }
+    </style>
+</head>
+<body>
+    <div id="map" style="width: 600px; height: 450px;"></div>
+    <script>
+        var mousePositionControl = new ol.control.MousePosition( {
+            projection: 'EPSG:4326',
+            coordinateFormat: function(coordinate) {
+                // сначала широта, потом долгота и ограничиваем до 5 знаков после запятой
+                return ol.coordinate.format(coordinate, '{y}, {x}', 5);
+            }
+        } );
+        
+        var map = new ol.Map({
+            controls: ol.control.defaults().extend([
+                mousePositionControl,
+                new ol.control.ZoomSlider(),
+                new ol.control.OverviewMap(),
+                new ol.control.ScaleLine()
+            ]),
+            target: 'map'
+        });
+
+        var osmLayer = new ol.layer.Tile({
+            source: new ol.source.OSM()
+        });
+        map.addLayer(osmLayer);
+        
+        var view = new ol.View({
+            center: [ 4188426.7147939987, 7508764.236877314 ],
+            zoom: 12
+        });
+        map.setView(view);
+    </script>
+</body>
+</html>
