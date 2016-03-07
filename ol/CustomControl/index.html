@@ -1,0 +1,92 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Свой контрол в OpenLayers 3</title>
+    <link rel="stylesheet" href="ol.css">
+    <script src="ol.js"></script>
+    <style>
+        .ol-control-geolocation {
+            bottom: .5em;
+            left: .5em;
+        }
+    </style>
+</head>
+<body>
+    <div id="map" style="width: 100%; height: 400px;"></div>
+    <script>
+        var GeolocationControl = function ( opt_options ) {
+            var options = opt_options || {};
+            
+            this._element;
+            
+            this._init();
+
+            ol.control.Control.call( this, {
+                element: this._element,
+                target: options.target
+            } );
+        };
+
+        ol.inherits( GeolocationControl, ol.control.Control );
+
+        GeolocationControl.prototype._init = function () {
+            // создаем кнопку с буквой М
+            var button = document.createElement( 'button' );
+            button.innerHTML = 'М';
+            button.title = 'Определить местоположение';
+
+            // вешаем события, по которым контрол начнет работу
+            button.addEventListener( 'click', this._trigger.bind( this ), false );
+            button.addEventListener( 'touchstart', this._trigger.bind( this ), false );
+
+            // создаем контейнер и помещаем в него кнопку
+            this._element = document.createElement( 'div' );
+            this._element.className = 'ol-control ol-control-geolocation';
+            this._element.appendChild( button );
+        };
+
+        GeolocationControl.prototype._trigger = function ( e ) {
+            e.preventDefault();
+            // пытаемся получить местоположение с помощью стандартного функционала HTML 5
+            var geolocation = navigator.geolocation;
+            if (geolocation) {
+                geolocation.getCurrentPosition(this._geolocationSuccess, this._geolocationError);
+            } else {
+                alert("Определение местоположения недоступно");
+            }
+        };
+        
+        GeolocationControl.prototype._geolocationSuccess = function ( position ) {
+            // координаты приходят в градусах
+            var coordWgs = [position.coords.longitude, position.coords.latitude];
+            // преобразуем градусы в метры
+            var coordMercator = ol.proj.transform(coordWgs, "EPSG:4326", "EPSG:3857");
+            // ... и центрируем карту по этим координатам
+            map.getView().setCenter(coordMercator);
+            
+            alert("Ваши координаты: широта " + position.coords.latitude + ", долгота " + position.coords.longitude);
+        };
+        
+        GeolocationControl.prototype._geolocationError = function () {
+            alert("Ошибка определения местоположения");
+        };
+
+        var map = new ol.Map({
+            controls: ol.control.defaults().extend([ new GeolocationControl() ]),
+            target: 'map'
+        });
+
+        var osmLayer = new ol.layer.Tile({
+            source: new ol.source.OSM()
+        });
+        map.addLayer(osmLayer);
+        
+        var view = new ol.View({
+            center: [ 4188426.7147939987, 7508764.236877314 ],
+            zoom: 9
+        });
+        map.setView(view);
+    </script>
+</body>
+</html>
