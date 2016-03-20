@@ -1,0 +1,103 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Оверлеи</title>
+    <link rel="stylesheet" href="ol.css">
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <script src="ol.js"></script>
+    <script src="jquery-2.2.1.min.js"></script>
+    <script src="bootstrap.min.js"></script>
+    
+    <style type="text/css">
+        a.mapLink {
+            background-color: #FFF;
+            border-radius: 3px;
+            display: inline-block;
+            padding: 4px;
+            text-align: center;
+        }
+        .popover {
+            z-index: auto;
+        }
+        .popover-content {
+            min-width: 230px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map" style="width: 100%; height: 400px;"></div>
+    <div style="display: none;">
+        <a id="cathedral" class="mapLink" target="_blank" href="https://ru.wikipedia.org/wiki/Храм_Василия_Блаженного">Храм Василия<br />Блаженного</a>
+        <img id="arbat" title="Арбат, фото Alex 'Florstein' Fedorov" src="arbat.jpg" />
+        <img id="marker" title="Парк Горького" src="marker.png" />
+        <div id="popup" title="Координаты"></div>
+    </div>
+    <script>
+        var map = new ol.Map({
+          target: 'map'
+        });
+
+        var osmLayer = new ol.layer.Tile({
+          source: new ol.source.OSM()
+        });
+        map.addLayer(osmLayer);
+        
+        var view = new ol.View({
+          center: [ 4188426.7147939987, 7508764.236877314 ],
+          zoom: 12
+        });
+        map.setView(view);
+        
+        var label = new ol.Overlay({
+            position: [ 4188188.3381199376, 7509304.829602858 ],
+            element: document.getElementById('cathedral'),
+            positioning: 'center-center'
+        });
+        map.addOverlay(label);
+        
+        var label = new ol.Overlay({
+            position: [ 4184823.5506498376, 7508782.833373562 ],
+            element: document.getElementById('arbat'),
+            positioning: 'center-center'
+        });
+        map.addOverlay(label);
+        
+        var marker = new ol.Overlay({
+            position: [ 4185756.9464169894, 7504760.372082823 ],
+            element: document.getElementById('marker'),
+            positioning: 'bottom-center'
+        });
+        map.addOverlay(marker);
+        
+        var popup = new ol.Overlay({
+            element: document.getElementById('popup')
+        });
+        map.addOverlay(popup);
+        
+        map.on('click', function(evt) {
+            // получение HTML-элемента попапа
+            var element = popup.getElement();
+            
+            // получаем координаты и преобразуем в градусы, минуты и секунды
+            var coordinate = evt.coordinate;
+            var hdms = ol.coordinate.toStringHDMS(ol.proj.transform(
+                coordinate, 'EPSG:3857', 'EPSG:4326'));
+
+            // убираем старый попап
+            $(element).popover('destroy');
+            // задаем попапу положение, в котором был клик
+            popup.setPosition(coordinate);
+            // задаем контент и другие настройки
+            $(element).popover({
+                'placement': 'top',
+                'animation': false,
+                'html': true,
+                'content': '<p>Вы кликнули в координатах:</p><code>' + hdms + '</code>'
+            });
+            // ...и отображение попапа
+            $(element).popover('show');
+        });
+    </script>
+</body>
+</html>
