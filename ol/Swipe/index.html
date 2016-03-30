@@ -1,0 +1,134 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Контрол шторка</title>
+    <link rel="stylesheet" href="ol.css">
+    <script src="ol.js"></script>
+</head>
+<body>
+    <div id="map" style="width: 70%; height: 400px; float: right;"></div>
+    <div style="width: 30%; height: 400px;">
+        <input type="radio" name="canvasType" value="clipVertical" id="clipVertical" onchange="canvasTypeChanged(this.value)" checked="true" /><label for="clipVertical">Вертикальная шторка<label><br />
+        <input type="radio" name="canvasType" value="clipHorizontal" id="clipHorizontal" onchange="canvasTypeChanged(this.value)" /><label for="clipHorizontal">Горизонтальная шторка<label><br />
+        <input type="radio" name="canvasType" value="clipSquare" id="clipSquare" onchange="canvasTypeChanged(this.value)" /><label for="clipSquare">Окно<label><br />
+        <input type="radio" name="canvasType" value="clipCircle" id="clipCircle" onchange="canvasTypeChanged(this.value)" /><label for="clipCircle">Лупа<label><br />
+        <input type="radio" name="canvasType" value="clipStar" id="clipStar" onchange="canvasTypeChanged(this.value)" /><label for="clipStar">Звезда<label><br />
+    </div>
+    <script>
+        function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+            var rot = Math.PI / 2 * 3;
+            var x = cx;
+            var y = cy;
+            var step = Math.PI / spikes;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius)
+            for (var i = 0; i < spikes; i++){
+                x = cx + Math.cos(rot) * outerRadius;
+                y = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y)
+                rot += step
+
+                x = cx + Math.cos(rot) * innerRadius;
+                y = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+            }
+            ctx.lineTo(cx, cy - outerRadius);
+            ctx.closePath();
+            ctx.clip();
+        }
+
+
+        var clipVertical = function(ctx) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, currentMousePosition[0], ctx.canvas.height);
+            ctx.clip();
+        };
+        
+        var clipHorizontal = function(ctx) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, ctx.canvas.width, currentMousePosition[1]);
+            ctx.clip();
+        };
+        
+        var clipSquare = function(ctx) {
+            var x = currentMousePosition[0];
+            var y = currentMousePosition[1];
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x - 100, y - 100, 200, 200);
+            ctx.clip();
+        };
+        
+        var clipCircle = function(ctx) {
+            var x = currentMousePosition[0];
+            var y = currentMousePosition[1];
+            
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, 100, 0, 2 * Math.PI);
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+            ctx.stroke();
+            ctx.clip();
+        };
+
+        var clipStar = function(ctx) {
+            var x = currentMousePosition[0];
+            var y = currentMousePosition[1];
+            
+            ctx.save();
+            drawStar(ctx, x, y, 7, 40, 70);
+        };        
+        
+        var currentClip = clipVertical;
+
+        function canvasTypeChanged(canvasType) {
+            currentClip = window[canvasType];
+        }
+    
+        
+        var map = new ol.Map({
+          target: 'map'
+        });
+
+        var osmLayer = new ol.layer.Tile({
+          source: new ol.source.OSM()
+        });
+        map.addLayer(osmLayer);
+
+        var arcgisImagery = new ol.layer.Tile({
+            source: new ol.source.TileArcGISRest({
+                url: 'http://server.arcgisonline.com/arcgis/rest/services/ESRI_Imagery_World_2D/MapServer'
+            })
+        });
+        map.addLayer(arcgisImagery);
+        
+        var view = new ol.View({
+          center: [ 4188426.7147939987, 7508764.236877314 ],
+          zoom: 12
+        });
+        map.setView(view);
+
+        var currentMousePosition = [0, 0];
+        map.on('pointermove', function (evt) {
+            currentMousePosition = evt.pixel;
+            map.render();
+        });
+        
+        arcgisImagery.on('precompose', function(event) {
+            currentClip(event.context);
+        });
+
+        arcgisImagery.on('postcompose', function(event) {
+            var ctx = event.context;
+            ctx.restore();
+        });
+    </script>
+</body>
+</html>
