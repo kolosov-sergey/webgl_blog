@@ -1,0 +1,46 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Теплокарта (Heatmap)</title>
+    <link rel="stylesheet" href="ol.css">
+    <script src="ol.js"></script>
+
+</head>
+<body>
+    Размытие <input type="number" id="blur" min="5" max="25" value="15" onchange="updateParams()" style="margin-right: 20px;" />
+    Радиус <input type="number" id="radius" min="1" max="20" value="8" onchange="updateParams()" />
+    <br />
+    <br />
+    <div id="map" style="width: 100%; height: 400px;"></div>
+    <script>
+        var map = new ol.Map({
+          target: 'map'
+        });
+
+        var osmLayer = new ol.layer.Tile({
+          source: new ol.source.OSM()
+        });
+        map.addLayer(osmLayer);
+        
+        var heatmap = new ol.layer.Heatmap({
+            source: new ol.source.Vector({
+                url: 'cities.json',
+                format: new ol.format.GeoJSON()
+            })
+        });
+        map.addLayer(heatmap);
+        
+        var view = new ol.View({
+          center: [ 5107216.481902336, 5263759.515830377 ],
+          zoom: 3
+        });
+        map.setView(view);
+
+        function updateParams() {
+            heatmap.set('blur', parseInt(document.getElementById('blur').value));
+            heatmap.set('radius', parseInt(document.getElementById('radius').value));
+        }
+    </script>
+</body>
+</html>
