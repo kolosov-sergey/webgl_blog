@@ -85,17 +85,24 @@
             
             var styleFunc = function( feature, resolution ) {
                 var marker = feature.get( 'marker' );
-                
-                return [new ol.style.Style({
-                    image : new ol.style.Icon({
-                        anchor : [ 0.5, 1 ],
-                        src : marker
-                    }),
-                    stroke: new ol.style.Stroke({
-                        color: 'blue',
-                        width: 3
-                    })
-                })];
+
+                if (marker) {
+                    // marker определён - возвращаем стили для точки
+                    return [new ol.style.Style({
+                        image : new ol.style.Icon({
+                            anchor : [ 0.5, 1 ],
+                            src : marker
+                        })
+                    })];
+                } else {
+                    // marker не определён - возвращаем стили для линии
+                    return [new ol.style.Style({
+                        stroke: new ol.style.Stroke({
+                            color: 'blue',
+                            width: 3
+                        })
+                    })];
+                }
             };
             
             this._source = new ol.source.Vector();
