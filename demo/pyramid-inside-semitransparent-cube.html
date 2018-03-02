@@ -1,0 +1,390 @@
+<!-- более реалистичная прозрачность достигается за счёт отрисовки каждой грани куба как отдельного объекта -->
+<!DOCTYPE html>
+<html style="width: 100%; height: 100%;">
+<head>
+<title>Pyramid inside semitransparent cube</title>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+
+<script type="text/javascript" src="res/glMatrix-0.9.5.min.js"></script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec4 vColor;
+
+    void main(void) {
+        gl_FragColor = vColor;
+    }
+</script>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec4 aVertexColor;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    varying vec4 vColor;
+
+    void main(void) {
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        vColor = aVertexColor;
+    }
+</script>
+
+<script type="text/javascript">
+
+    var gl;
+
+    var shaderProgram;
+
+    var mvMatrix = mat4.create();
+    var pMatrix = mat4.create();
+
+    var pyramidVertexPositionBuffer;
+    var pyramidVertexColorBuffer;
+
+    var cubeEdges = [];
+
+    window.requestAnimFrame = (function() {
+      return window.requestAnimationFrame ||
+             window.webkitRequestAnimationFrame ||
+             window.mozRequestAnimationFrame ||
+             window.oRequestAnimationFrame ||
+             window.msRequestAnimationFrame ||
+             function(callback, element) {
+               window.setTimeout(callback, 1000/60);
+             };
+    })();
+
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("experimental-webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+
+        shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+        gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+    }
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    // функция для создания отдельных граней куба
+    function createCubeEdge(vertices, color) {
+        var cubeEdge = {};
+
+        // запоминаем первую и последнюю точку диагонали куба,
+        // чтобы в дальнейшем найти координату Z центра грани
+        cubeEdge.firstVertex = vec3.create([vertices[0], vertices[1], vertices[2]]);
+        cubeEdge.lastVertex = vec3.create([vertices[6], vertices[7], vertices[8]]);
+
+        cubeEdge.cubeVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeEdge.cubeVertexPositionBuffer);
+
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        cubeEdge.vertexSize = 3;
+        cubeEdge.numVertex = 6;
+
+        cubeEdge.cubeVertexColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeEdge.cubeVertexColorBuffer);
+
+        // у грани будет один цвет, заполняем для всех точек
+        var unpackedColors = [];
+        for (var j = 0; j < 6; j++) {
+            unpackedColors = unpackedColors.concat(color);
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(unpackedColors), gl.STATIC_DRAW);
+        cubeEdge.colorSize = 4;
+        cubeEdge.numColor = 6;
+
+        cubeEdges.push(cubeEdge);
+    }
+
+    function initBuffers() {
+        pyramidVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, pyramidVertexPositionBuffer);
+
+        // размер вынесен, чтобы можно было поэкспериментировать
+        var pyramidSize = 0.6;
+
+        var vertices = [
+            // лицевая грань
+             0.0,  pyramidSize,  0.0,
+            -pyramidSize, -pyramidSize,  pyramidSize,
+             pyramidSize, -pyramidSize,  pyramidSize,
+
+            // правая грань
+             0.0,  pyramidSize,  0.0,
+             pyramidSize, -pyramidSize,  pyramidSize,
+             pyramidSize, -pyramidSize, -pyramidSize,
+
+            // задняя грань
+             0.0,  pyramidSize,  0.0,
+             pyramidSize, -pyramidSize, -pyramidSize,
+            -pyramidSize, -pyramidSize, -pyramidSize,
+
+            // левая грань
+             0.0,  pyramidSize,  0.0,
+            -pyramidSize, -pyramidSize, -pyramidSize,
+            -pyramidSize, -pyramidSize,  pyramidSize
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        pyramidVertexPositionBuffer.itemSize = 3;
+        pyramidVertexPositionBuffer.numItems = 12;
+
+        pyramidVertexColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, pyramidVertexColorBuffer);
+        var colors = [
+            // передняя грань
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+
+            // правая грань
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+
+            // задняя грань
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+
+            // левая грань
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+            0.0, 1.0, 0.0, 1.0,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+        pyramidVertexColorBuffer.itemSize = 4;
+        pyramidVertexColorBuffer.numItems = 12;
+
+        // используем два цвета, чтобы лучше было видно врещение куба
+        var redColor = [1.0, 0.0, 0.0, 0.3];
+        var blueColor = [0.0, 0.0, 1.0, 0.3];
+
+        // создаём отдельно все грани куба
+        createCubeEdge([
+            // передняя грань
+            -1.0, -1.0,  1.0,
+             1.0, -1.0,  1.0,
+             1.0,  1.0,  1.0,
+             1.0,  1.0,  1.0,
+            -1.0,  1.0,  1.0,
+            -1.0, -1.0,  1.0], blueColor);
+        createCubeEdge([
+            // задняя грань
+            -1.0, -1.0, -1.0,
+            -1.0,  1.0, -1.0,
+             1.0,  1.0, -1.0,
+             1.0,  1.0, -1.0,
+             1.0, -1.0, -1.0,
+            -1.0, -1.0, -1.0], blueColor);
+        createCubeEdge([
+            // верхняя грань
+            -1.0,  1.0, -1.0,
+            -1.0,  1.0,  1.0,
+             1.0,  1.0,  1.0,
+             1.0,  1.0,  1.0,
+             1.0,  1.0, -1.0,
+             -1.0,  1.0, -1.0], redColor);
+        createCubeEdge([
+            // нижняя грань
+            -1.0, -1.0, -1.0,
+             1.0, -1.0, -1.0,
+             1.0, -1.0, 1.0,
+             1.0, -1.0, 1.0,
+            -1.0, -1.0, 1.0,
+            -1.0, -1.0, -1.0], redColor);
+        createCubeEdge([
+            // правая грань
+             1.0, -1.0, -1.0,
+             1.0,  1.0, -1.0,
+             1.0,  1.0, 1.0,
+             1.0,  1.0, 1.0,
+             1.0,  -1.0, 1.0,
+             1.0, -1.0, -1.0], redColor);
+        createCubeEdge([
+            // левая грань
+            -1.0, -1.0, -1.0,
+            -1.0, -1.0, 1.0,
+            -1.0, 1.0,  1.0,
+            -1.0, 1.0,  1.0,
+            -1.0, 1.0, -1.0,
+            -1.0, -1.0, -1.0], redColor);
+    }
+
+
+    var rPyramid = 0;
+    var rCube = 0;
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+
+        mat4.identity(mvMatrix);
+        mat4.translate(mvMatrix, [0.0, 0.0, -8.0]);
+
+        mat4.rotate(mvMatrix, degToRad(rPyramid), [0, 1, 0]);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, pyramidVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, pyramidVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, pyramidVertexColorBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, pyramidVertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        setMatrixUniforms();
+        gl.drawArrays(gl.TRIANGLES, 0, pyramidVertexPositionBuffer.numItems);
+
+
+        mat4.identity(mvMatrix);
+        mat4.translate(mvMatrix, [0.0, 0.0, -8.0]);
+
+        mat4.rotate(mvMatrix, degToRad(rCube), [1, 1, 1]);
+
+        // упорядочиваем грани по координате Z
+        var sortedByZ = [];
+        for (var i = 0; i < cubeEdges.length; i++) {
+            var cubeEdge = cubeEdges[i];
+            var outFirstVertex = vec3.create();
+            var outLastVertex = vec3.create();
+            // применяем текущую матрицу модель-вид для поворота точек диагонали грани
+            mat4.multiplyVec3(mvMatrix, cubeEdge.firstVertex, outFirstVertex);
+            mat4.multiplyVec3(mvMatrix, cubeEdge.lastVertex, outLastVertex);
+            // находим координату Z центра грани (середины диагонали) с учётом поворота - это и будет значение Z грани
+            cubeEdge.currentZ = (outFirstVertex[2] + outLastVertex[2]) / 2;
+
+            // упорядочиваем грани по значению координаты Z (от дальней к ближней)
+            var j = 0;
+            while (sortedByZ[j] && sortedByZ[j].currentZ < cubeEdge.currentZ) {
+                j++;
+            }
+            sortedByZ.splice(j, 0, cubeEdge);
+        }
+
+        // отрисовываем грани в нужном порядке
+        for (var i = 0; i < sortedByZ.length; i++) {
+            var cubeEdge = sortedByZ[i];
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, cubeEdge.cubeVertexPositionBuffer);
+            gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, cubeEdge.vertexSize, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, cubeEdge.cubeVertexColorBuffer);
+            gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, cubeEdge.colorSize, gl.FLOAT, false, 0, 0);
+
+            setMatrixUniforms();
+            gl.drawArrays(gl.TRIANGLES, 0, cubeEdge.numVertex);
+        }
+    }
+
+
+    var lastTime = 0;
+    function animate() {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+
+            rPyramid += (90 * elapsed) / 1000.0;
+            rCube -= (75 * elapsed) / 1000.0;
+        }
+        lastTime = timeNow;
+    }
+
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        animate();
+    }
+
+    function webGLStart() {
+        var canvas = document.getElementById("exampleCanvas");
+        initGL(canvas);
+        initShaders()
+        initBuffers();
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        tick();
+    }
+</script>
+
+</head>
+<body onload="webGLStart();">
+    <canvas id="exampleCanvas" style="border: none;" width="500" height="500"></canvas>
+</body>
+</html>

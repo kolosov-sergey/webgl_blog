@@ -1,0 +1,169 @@
+<!-- Пример демонстрирует неполноценную прозрачность, см. pyramid-inside-semitransparent-cube.html -->
+<!DOCTYPE html>
+<html style="width: 100%; height: 100%;">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>WebGL - Куб внутри прозрачного куба</title>
+</head>
+<body style="width: 100%; height: 100%;">
+    <input id="opacityRange" type="range" min="1" max="255" value="128" onchange="opacityChange();">
+    <br />
+    <canvas id="canvas" style="width: 50%; height: 50%;"></canvas>
+</body>
+
+<script src="res/webgl-utils.js"></script>
+<script src="res/m4.js"></script>
+<script src="res/primitives.js"></script>
+
+<script id="3d-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 a_position;
+attribute vec4 a_color;
+
+uniform mat4 u_matrix;
+
+varying vec4 v_color;
+
+void main() {
+  gl_Position = u_matrix * a_position;
+  v_color = a_color;
+}
+</script>
+
+<script id="3d-fragment-shader" type="x-shader/x-fragment">
+precision mediump float;
+
+varying vec4 v_color;
+
+void main() {
+   gl_FragColor = v_color;
+}
+</script>
+
+<script>
+"use strict";
+
+var opacityValue = 128;
+function opacityChange() {
+    opacityValue = parseInt(document.getElementById("opacityRange").value);
+}
+
+function main() {
+  var canvas = document.getElementById("canvas");
+  var gl = canvas.getContext("webgl");
+  if (!gl) {
+    return;
+  }
+
+  var createFlattenedVertices = function(gl, vertices, color) {
+    return webglUtils.createBufferInfoFromArrays(
+        gl,
+        primitives.makeConstantVertexColors(primitives.deindexVertices(vertices), color)
+      );
+  };
+
+  var programInfo = webglUtils.createProgramInfo(gl, ["3d-vertex-shader", "3d-fragment-shader"]);
+
+  function degToRad(d) {
+    return d * Math.PI / 180;
+  }
+
+  var cameraAngleRadians = degToRad(0);
+  var fieldOfViewRadians = degToRad(60);
+  var cameraHeight = 50;
+
+  function computeMatrix(viewProjectionMatrix, translation, xRotation, yRotation) {
+    var matrix = m4.translate(viewProjectionMatrix,
+        translation[0],
+        translation[1],
+        translation[2]);
+    matrix = m4.xRotate(matrix, xRotation);
+    return m4.yRotate(matrix, yRotation);
+  }
+
+  // отрисовка
+  requestAnimationFrame(drawScene);
+
+  function drawScene(time) {
+    time *= 0.0005;
+
+    webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+    gl.enable(gl.CULL_FACE);
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    // заливаем фон чёрным цветом
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+    var projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
+
+    var cameraPosition = [0, 0, 35];
+    var target = [0, 0, 0];
+    var up = [0, 1, 0];
+    var cameraMatrix = m4.lookAt(cameraPosition, target, up);
+
+    var viewMatrix = m4.inverse(cameraMatrix);
+    var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+
+    gl.useProgram(programInfo.program);
+
+    // ------ Внутренний непрозрачный куб --------
+
+    var innerCubeBufferInfo   = createFlattenedVertices(gl, primitives.createCubeVertices(18), [0, 0, 128, 255]);
+
+    webglUtils.setBuffersAndAttributes(gl, programInfo, innerCubeBufferInfo);
+
+    var innerCubeUniforms = {
+      u_matrix: m4.identity(),
+    };
+
+    var innerCubeXRotation   = 0;
+    var innerCubeYRotation   =  0;
+    var innerCubeTranslation   = [0, 0, 0];
+    innerCubeUniforms.u_matrix = computeMatrix(
+        viewProjectionMatrix,
+        innerCubeTranslation,
+        innerCubeXRotation,
+        innerCubeYRotation);
+
+    webglUtils.setUniforms(programInfo, innerCubeUniforms);
+
+    gl.drawArrays(gl.TRIANGLES, 0, innerCubeBufferInfo.numElements);
+
+    // ------ Внешний прозрачный куб --------
+
+    var outerCubeBufferInfo   = createFlattenedVertices(gl, primitives.createCubeVertices(20), [0, 128, 0, opacityValue]);
+
+    webglUtils.setBuffersAndAttributes(gl, programInfo, outerCubeBufferInfo);
+
+    var outerCubeUniforms = {
+      u_matrix: m4.identity(),
+    };
+
+    var outerCubeXRotation   = -time;
+    var outerCubeYRotation   =  time;
+    var outerCubeTranslation   = [0, 0, 0];
+    outerCubeUniforms.u_matrix = computeMatrix(
+        viewProjectionMatrix,
+        outerCubeTranslation,
+        outerCubeXRotation,
+        outerCubeYRotation);
+
+    webglUtils.setUniforms(programInfo, outerCubeUniforms);
+
+    gl.drawArrays(gl.TRIANGLES, 0, outerCubeBufferInfo.numElements);
+
+    requestAnimationFrame(drawScene);
+  }
+}
+
+main();
+</script>
+</html>
