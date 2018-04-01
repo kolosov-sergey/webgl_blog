@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>WebGL Бенгальский огонь. Одна искра</title>
+    <style type="text/css">
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="particles" style="width: 100%; height: 300px;"></canvas>
+</body>
+
+<script src="gl-matrix-min.js"></script>
+<script src="webgl-utils.js"></script>
+
+<script id="vertex-shader-spark" type="x-shader/x-vertex">
+    attribute vec3 a_position;
+
+    uniform mat4 u_mvMatrix;
+    uniform mat4 u_pMatrix;
+
+    void main() {
+        gl_Position = u_pMatrix * u_mvMatrix * vec4(a_position, 1.0);
+
+        // размер искры
+        gl_PointSize = 32.0;
+    }
+</script>
+
+<script id="fragment-shader-spark" type="x-shader/x-fragment">
+    precision mediump float;
+
+    uniform sampler2D u_texture;
+
+    void main() {
+        gl_FragColor = texture2D(u_texture, gl_PointCoord);
+    }
+</script>
+
+<script>
+
+function main() {
+    var canvas = document.getElementById("particles");
+    var gl = canvas.getContext("webgl");
+    if (!gl) {
+        return;
+    }
+
+    // gl.SRC_ALPHA - рисуемая искра умножается на прозрачный канал, чтобы убрать фон
+    // изображения. gl.ONE - уже нарисованные искры остаются без изменений
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
+    var programSpark = webglUtils.createProgramFromScripts(gl, ["vertex-shader-spark", "fragment-shader-spark"]);
+
+    var positionAttributeLocationSpark = gl.getAttribLocation(programSpark, "a_position");
+    var textureLocationSpark = gl.getUniformLocation(programSpark, "u_texture");
+    var pMatrixUniformLocationSpark = gl.getUniformLocation(programSpark, "u_pMatrix");
+    var mvMatrixUniformLocationSpark = gl.getUniformLocation(programSpark, "u_mvMatrix");
+
+    var texture = gl.createTexture();
+    var image = new Image();
+    image.src = "spark.png";
+    image.addEventListener('load', function() {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+
+        // отрисовку сцены начинаем только после загрузки изображения
+        requestAnimationFrame(drawScene);
+    });
+
+    var mvMatrix = mat4.create();
+    var pMatrix = mat4.create();
+
+    function drawScene(now) {
+        // обновляем размер canvas на случай, если он растянулся или сжался вслед за страницей
+        webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective(pMatrix, 45, gl.canvas.width / gl.canvas.height, 0.1, 100.0);
+        mat4.identity(mvMatrix);
+        mat4.translate(mvMatrix, mvMatrix, [0, 0, -1]);
+
+
+        // Координаты x y z, в которых будут отрисованы искры. Сейчас у нас всего одна искра.
+        var positions = [0, 0, 0];
+
+        gl.useProgram(programSpark);
+
+        gl.uniformMatrix4fv(pMatrixUniformLocationSpark, false, pMatrix);
+        gl.uniformMatrix4fv(mvMatrixUniformLocationSpark, false, mvMatrix);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.uniform1i(textureLocationSpark, 0);
+
+        var positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(positionAttributeLocationSpark, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(positionAttributeLocationSpark);
+
+        gl.drawArrays(gl.POINTS, 0, positions.length / 3);
+
+        requestAnimationFrame(drawScene);
+    }
+}
+
+main();
+</script>
+
+</html>
